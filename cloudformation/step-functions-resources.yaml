@@ -1,0 +1,506 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This template manages sample AWS Step Functions resources to be orchestrate AWS Glue jobs and crawlers.
+
+###############################################################################
+############################## P A R A M E T E R S ############################
+###############################################################################
+
+Parameters:
+
+  OpenaqDatabaseName:
+    Type: String
+    MinLength: "4"
+    Default: "openaq_db"
+    Description: "Name of the AWS Glue database to contain this CloudFormation template's tables."
+
+  IsoCountriesTableName:
+    Type: String
+    MinLength: "4"
+    Default: "countries_tb"
+    Description: "Name of the OpenAQ data table in AWS Glue."
+
+  OpenaqTableName:
+    Type: String
+    MinLength: "4"
+    Default: "openaq_tb"
+    Description: "Name of the OpenAQ data table in AWS Glue."
+
+  GlueRunnerActivityName:
+    Type: String
+    Default: "GlueRunnerActivity"
+    Description: "Name of the AWS Step Functions activity to be polled by GlueRunner."
+
+  AthenaRunnerActivityName:
+    Type: String
+    Default: "AthenaRunnerActivity"
+    Description: "Name of the AWS Step Functions activity to be polled by AthenaRunner."
+
+  Region:
+    Type: String
+
+  CreateView1:
+    Type: String
+    Description: "Query to create the first view requested by the use case."
+
+  CreateView2:
+    Type: String
+    Description: "Query to create the second view requested by the use case."
+
+  CreateView3:
+    Type: String
+    Description: "Query to create the third view requested by the use case."
+
+  CreateView4:
+    Type: String
+    Description: "Query to create the fourth view requested by the use case."
+
+  ArtifactBucketName:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 bucket containing source .zip files."
+
+  LambdaSourceS3Key:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 key of Glue Runner lambda function .zip file."
+
+  DataBucketName:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 bucket in which the source data will be uploaded."
+
+###############################################################################
+#################################  R E S O U R C E S  #########################
+###############################################################################
+
+Resources:
+
+  StateExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - states.us-east-1.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Policies:
+        -
+          PolicyName: "StatesExecutionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action: "lambda:InvokeFunction"
+                Resource: "*"
+      Path: "/"
+
+  GlueRunnerActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: !Ref GlueRunnerActivityName
+
+  AthenaRunnerActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: !Ref AthenaRunnerActivityName
+
+  WaitForOpenaqDataActivity:
+    Type: "AWS::StepFunctions::Activity"
+    Properties:
+      Name: !Sub "${DataBucketName}-openaq-raw-data-created"
+
+  OpenaqETLOrchestrator:
+    Type: "AWS::StepFunctions::StateMachine"
+    Properties:
+      StateMachineName: OpenaqETLOrchestrator
+      DefinitionString:
+        Fn::Sub:
+        - |-
+
+            {
+              "StartAt": "Pre-process",
+              "States": {
+                "Pre-process": {
+                  "Type": "Pass",
+                  "Next": "Start Parallel Glue Jobs"
+                },
+
+                "Start Parallel Glue Jobs": {
+                  "Type": "Parallel",
+                  "Branches": [
+                    {
+                      "StartAt": "Wait For OpenAQ Data branch 1",
+                      "States": {
+                        "Wait For OpenAQ Data branch 1": {
+                          "Type": "Task",
+                          "Resource": "${WaitForOpenaqDataActivityArn}",
+                          "Next": "Prep for Process OpenAQ Data"
+                        },
+                        "Prep for Process OpenAQ Data": {
+                          "Type": "Pass",
+                          "Result": "{\"GlueJobName\" : \"${ProcessOpenaqDataGlueJobName}\"}",
+                          "Next": "Process OpenAQ Data"
+                        },
+                        "Process OpenAQ Data": {
+                          "Type": "Task",
+                          "Resource": "${GlueRunnerActivityArn}",
+                          "End": true
+                        }
+                      }
+                    },
+
+                    {
+                      "StartAt": "Wait For OpenAQ Data branch 2",
+                      "States": {
+                        "Wait For OpenAQ Data branch 2": {
+                          "Type": "Task",
+                          "Resource": "${WaitForOpenaqDataActivityArn}",
+                          "Next": "Prep for Process Incoherent OpenAQ Data"
+                        },
+                        "Prep for Process Incoherent OpenAQ Data": {
+                          "Type": "Pass",
+                          "Result": "{\"GlueJobName\" : \"${ProcessOpenaqIncoherentDataGlueJobName}\"}",
+                          "Next": "Process OpenAQ Incoherent Data"
+                        },
+                        "Process OpenAQ Incoherent Data": {
+                          "Type": "Task",
+                          "Resource": "${GlueRunnerActivityArn}",
+                          "End": true
+                        }
+                      }
+                    },
+                    {
+                      "StartAt": "Wait For OpenAQ Data branch 3",
+                      "States": {
+                        "Wait For OpenAQ Data branch 3": {
+                          "Type": "Task",
+                          "Resource": "${WaitForOpenaqDataActivityArn}",
+                          "Next": "Prep for Process Iso Countries Data"
+                        },
+                        "Prep for Process Iso Countries Data": {
+                          "Type": "Pass",
+                          "Result": "{\"GlueJobName\" : \"${ProcessIsoCountriesDataGlueJobName}\"}",
+                          "Next": "Process Iso Countries Data"
+                        },
+                        "Process Iso Countries Data": {
+                          "Type": "Task",
+                          "Resource": "${GlueRunnerActivityArn}",
+                          "End": true
+                        }
+                      }
+                    }
+                  ],
+                  "Next": "Prep For Joining OpenAQ And Iso Countries Data",
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "GlueJobFailedError"
+                      ],
+                      "Next": "ETL Job Failed Fallback"
+                    }
+                  ]
+                },
+
+                "Prep For Joining OpenAQ And Iso Countries Data": {
+                  "Type": "Pass",
+                  "Result": "{\"GlueJobName\" : \"${JoinOpenaqAndIsoCountriesDataJobName}\"}",
+                  "Next": "Join OpenAQ And Iso Countries Data"
+                },
+                "Join OpenAQ And Iso Countries Data": {
+                  "Type": "Task",
+                  "Resource": "${GlueRunnerActivityArn}",
+                  "Next": "Prep For Running the Glue Crawler on the curated table",
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "GlueJobFailedError"
+                      ],
+                      "Next": "ETL Job Failed Fallback"
+                    }
+                  ]
+                },
+                "ETL Job Failed Fallback": {
+                  "Type": "Pass",
+                  "Result": "This is a fallback from an ETL job failure.",
+                  "End": true
+                },
+
+
+                "Prep For Running the Glue Crawler on the curated table": {
+                  "Type": "Pass",
+                  "Result": "{\"CrawlerName\" : \"JoinOpenaqAndIsoCountriesData\"}",
+                  "Next": "Run OpenAQ Curated Crawler"
+                },
+               "Run OpenAQ Curated Crawler": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:eu-west-1:218175336227:activity:GlueRunnerActivity",
+                  "Next": "Wait for Crawler to complete",
+                  "TimeoutSeconds": 300,
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "CrawlerFailedError"
+                      ],
+                      "Next": "Crawler Failed Fallback"
+                    }
+                  ]
+                },
+                "Wait for Crawler to complete": {
+                    "Type": "Wait",
+                    "Seconds": 10,
+                    "Next": "Start Parallel Athena Queries"
+                  },
+
+                "Crawler Failed Fallback": {
+                  "Type": "Pass",
+                  "Result": "This is a fallback from the crawler failure.",
+                  "End": true
+                },
+
+
+
+                "Start Parallel Athena Queries": {
+                  "Type": "Parallel",
+                  "Branches": [
+                    {
+                      "StartAt": "Configure Athena Query 1",
+                      "States": {
+                              "Configure Athena Query 1":{
+                                "Type": "Pass",
+                                "Result": "{ \"AthenaQueryString\" : \"${view1}\", \"AthenaDatabase\": \"${GlueDatabaseName}\", \"AthenaResultOutputLocation\": \"${AthenaResultOutputLocation}\", \"AthenaResultEncryptionOption\": \"${AthenaResultEncryptionOption}\"}",
+                                "Next": "Execute Athena Query 1"
+                              },
+                              "Execute Athena Query 1":{
+                                "Type": "Task",
+                                "Resource": "arn:aws:states:eu-west-1:218175336227:activity:AthenaRunnerActivity",
+                                "End": false
+                              }
+                          }
+                      },
+
+                     {
+                      "StartAt": "Configure Athena Query 2",
+                      "States": {
+                                "Configure Athena Query 2":{
+                                "Type": "Pass",
+                                "Result": "{ \"AthenaQueryString\" : \"${view2}\", \"AthenaDatabase\": \"${GlueDatabaseName}\", \"AthenaResultOutputLocation\": \"${AthenaResultOutputLocation}\", \"AthenaResultEncryptionOption\": \"${AthenaResultEncryptionOption}\"}",
+                                "Next": "Execute Athena Query 2"
+                              },
+                          "Execute Athena Query 2":{
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:eu-west-1:218175336227:activity:AthenaRunnerActivity",
+                            "End": false
+                            }
+                       }
+                     },
+                     {
+                        "StartAt": "Configure Athena Query 3",
+                        "States": {
+                          "Configure Athena Query 3":{
+                            "Type": "Pass",
+                                "Result": "{ \"AthenaQueryString\" : \"${view3}\", \"AthenaDatabase\": \"${GlueDatabaseName}\", \"AthenaResultOutputLocation\": \"${AthenaResultOutputLocation}\", \"AthenaResultEncryptionOption\": \"${AthenaResultEncryptionOption}\"}",
+                            "Next": "Execute Athena Query 3"
+                          },
+                        "Execute Athena Query 3":{
+                          "Type": "Task",
+                          "Resource": "arn:aws:states:eu-west-1:218175336227:activity:AthenaRunnerActivity",
+                          "End": false
+                          }
+                      }
+                   },
+                    {
+                        "StartAt": "Configure Athena Query 4",
+                        "States": {
+                          "Configure Athena Query 4":{
+                            "Type": "Pass",
+                                "Result": "{ \"AthenaQueryString\" : \"${view4}\", \"AthenaDatabase\": \"${GlueDatabaseName}\", \"AthenaResultOutputLocation\": \"${AthenaResultOutputLocation}\", \"AthenaResultEncryptionOption\": \"${AthenaResultEncryptionOption}\"}",
+                            "Next": "Execute Athena Query 4"
+                          },
+                        "Execute Athena Query 4":{
+                          "Type": "Task",
+                          "Resource": "arn:aws:states:eu-west-1:218175336227:activity:AthenaRunnerActivity",
+                          "End": false
+                          }
+                      }
+                   }
+                  ],
+                  "Next": "Prepare QuickSights Runner",
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "AthenaQueryFailedError"
+                      ],
+                      "Next": "Athena Failed Fallback"
+                    }
+                  ]
+                },
+                "Athena Failed Fallback": {
+                  "Type": "Pass",
+                  "Result": "This is a fallback from Athena failure.",
+                  "End": true
+                },
+
+                "Prepare QuickSights Runner": {
+                  "Type": "Pass",
+                  "Result": "{\"QuickSightRunnerName\" : \"CreateQuickSightDataset\"}",
+                  "Next": "Start QuickSights Datasets"
+                },
+               "Start QuickSights Datasets": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:eu-west-1:218175336227:activity:QuickSightsRunnerActivity",
+                  "Next": "Wait for QuickSights to complete",
+                  "TimeoutSeconds": 300,
+                  "Catch": [
+                    {
+                      "ErrorEquals": [
+                        "QuickSightFailedError"
+                      ],
+                      "Next": "QuickSights Failed Fallback"
+                    }
+                  ]
+                },
+                "Wait for QuickSights to complete": {
+                    "Type": "Wait",
+                    "Seconds": 10,
+                    "Next": "QuickSights datasets updated"
+                },
+
+                "QuickSights Failed Fallback": {
+                  "Type": "Pass",
+                  "Result": "This is a fallback from the QuickSights Dataset failure.",
+                  "End": true
+                },
+                "QuickSights datasets updated": {
+                  "Type": "Pass",
+                  "Result": "QuickSights datasets updated.",
+                  "End": true
+                }
+              }
+            }
+        - {
+            GlueRunnerActivityArn : !Ref GlueRunnerActivity,
+            WaitForOpenaqDataActivityArn: !Ref WaitForOpenaqDataActivity,
+            ProcessOpenaqDataGlueJobName: "ProcessOpenaqData",
+            ProcessOpenaqIncoherentDataGlueJobName: "ProcessOpenaqIncoherentData",
+            ProcessIsoCountriesDataGlueJobName: "ProcessIsoCountriesData",
+            JoinOpenaqAndIsoCountriesDataJobName: "JoinOpenaqAndIsoCountriesData",
+            GlueDatabaseName: !Ref OpenaqDatabaseName,
+            GlueTableName: "openaq_curated",
+            view1: !Ref CreateView1,
+            view2: !Ref CreateView2,
+            view3: !Ref CreateView3,
+            view4: !Ref CreateView4,
+            AthenaRunnerActivityArn: !Ref AthenaRunnerActivity,
+            AthenaResultOutputLocation: !Sub "s3://${DataBucketName}/athena-queries-output/",
+            AthenaResultEncryptionOption: "SSE_S3"
+        }
+      RoleArn: !GetAtt StateExecutionRole.Arn
+
+  S3ObjectLambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+              - lambda.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AWSStepFunctionsFullAccess
+      Path: "/"
+
+  S3ObjectPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyDocument: {
+        "Version": "2012-10-17",
+        "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "logs:CreateLogStream",
+            "logs:PutLogEvents"
+          ],
+          "Resource": !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": "logs:CreateLogGroup",
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "states:SendTaskSuccess",
+            "states:SendTaskFailure",
+            "states:SendTaskHeartbeat",
+            "states:GetActivityTask"
+          ],
+          "Resource": "*"
+        }
+        ]
+      }
+      PolicyName: "S3ObjectPolicy"
+      Roles:
+        - !Ref S3ObjectLambdaExecutionRole
+
+  S3ObjectLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: "s3object"
+      Description: "Enables a Step Function State Machine to continue execution after a new object is created in S3."
+      Handler: "handler.lambda_handler"
+      Role: !GetAtt S3ObjectLambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          REGION: !Ref Region
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Ref LambdaSourceS3Key
+      Timeout: 180
+      MemorySize: 128
+      Runtime: python3.7
+    DependsOn:
+      - S3ObjectLambdaExecutionRole
+
+  DataBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref DataBucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Function: !GetAtt S3ObjectLambdaFunction.Arn
+            Event: "s3:ObjectCreated:*"
+            Filter:
+              S3Key:
+                Rules:
+                  -
+                    Name: "suffix"
+                    Value: "csv"
+    DependsOn:
+      - DataBucketPermission
+
+  DataBucketPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref S3ObjectLambdaFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref "AWS::AccountId"
+      SourceArn: !Sub "arn:aws:s3:::${DataBucketName}"
+
+###############################################################################
+#################################  O U T P U T S  #############################
+###############################################################################
+

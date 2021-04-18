@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "ArtifactBucketName",
+    "ParameterValue": "aws-test-artifact-bucket-2021041717"
+  },
+  {
+    "ParameterKey": "ETLScriptsPrefix",
+    "ParameterValue": "scripts"
+  },
+  {
+    "ParameterKey": "DataBucketName",
+    "ParameterValue": "aws-test-data-bucket-2021041717"
+  },
+  {
+    "ParameterKey": "ETLOutputPrefix",
+    "ParameterValue": "output"
+  }
+]

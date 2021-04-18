@@ -1,0 +1,178 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The CloudFormation template for AWS resources required by QuickSights Runner.
+
+###############################################################################
+############################## P A R A M E T E R S ############################
+###############################################################################
+
+Parameters:
+
+  Region:
+    Type: String
+    Default: "eu-west-2"
+    Description: "AWS Region."
+
+  QuickSightsRunnerLambdaFunctionName:
+    Type: String
+    Default: "quicksightrunner"
+    Description: "Name of the Lambda function that mediates between AWS Step Functions and AWS QuickSights."
+
+  ArtifactBucketName:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 bucket containing the source zip files."
+
+  LambdaSourceS3Key:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 key of QuickSights Runner lambda function .zip file."
+
+###############################################################################
+#################################  R E S O U R C E S  #########################
+###############################################################################
+
+Resources:
+
+  QuickSightsRunnerLambdaExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+
+  QuickSightsRunnerPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyDocument: {
+        "Version": "2012-10-17",
+        "Statement": [
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:CreateLogStream",
+                          "logs:PutLogEvents"
+                        ],
+                        "Resource": !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": "logs:CreateLogGroup",
+                        "Resource": "*"
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "states:SendTaskSuccess",
+                          "states:SendTaskFailure",
+                          "states:SendTaskHeartbeat",
+                          "states:GetActivityTask"
+                        ],
+                        "Resource": "*"
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "ds:AuthorizeApplication",
+                          "ds:UnauthorizeApplication",
+                          "ds:CheckAlias",
+                          "ds:CreateAlias",
+                          "ds:DescribeDirectories",
+                          "ds:DescribeTrusts",
+                          "ds:DeleteDirectory",
+                          "ds:CreateIdentityPoolDirectory",
+                          "iam:ListAccountAliases",
+                          "quicksight:CreateDataSet",
+                          "quicksight:ListDataSets",
+                          "quicksight:ListDashboards",
+                          "quicksight:ListDataSources",
+                          "quicksight:ListUsers",
+                          "quicksight:DescribeDataSet",
+                          "quicksight:DescribeDataSet",
+                          "quicksight:DescribeDataSource",
+                          "quicksight:DescribeDashboard",
+                          "quicksight:DescribeUser",
+                          "quicksight:DescribeIngestion",
+                          "quicksight:ListIngestions",
+                          "quicksight:DescribeAccountSettings",
+                          "quicksight:CancelIngestion",
+                          "quicksight:CreateAdmin",
+                          "quicksight:CreateAnalysis",
+                          "quicksight:CreateDashboard",
+                          "quicksight:CreateDataSet",
+                          "quicksight:CreateDataSource",
+                          "quicksight:CreateIngestion",
+                          "quicksight:CreateNamespace",
+                          "quicksight:CreateUser",
+                          "quicksight:DeleteDataSet",
+                          "quicksight:ListNamespaces",
+                          "quicksight:DescribeDataSetPermissions",
+                          "quicksight:DescribeDataSourcePermissions",
+                          "quicksight:UpdateDataSetPermissions",
+                          "quicksight:UpdateDataSourcePermissions",
+                        ],
+                        "Resource": "*"
+                      }
+        ]
+      }
+      PolicyName: "QuickSightsRunnerPolicy"
+      Roles:
+        - !Ref QuickSightsRunnerLambdaExecutionRole
+
+  QuickSightsRunnerLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref QuickSightsRunnerLambdaFunctionName
+      Description: "Starts and monitors AWS QuickSights Ingestion / Datasets on behalf of AWS Step Functions."
+      Handler: "handler.lambda_handler"
+      Role: !GetAtt QuickSightsRunnerLambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          DATABASE_SCHEMA: !Ref Region
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Ref LambdaSourceS3Key
+      Timeout: 360
+      MemorySize: 128
+      Runtime: python3.7
+    DependsOn:
+      - QuickSightsRunnerLambdaExecutionRole
+
+  ScheduledRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: "ScheduledRule"
+      ScheduleExpression: "rate(3 minutes)"
+      State: "ENABLED"
+      Targets:
+        -
+          Arn: !GetAtt QuickSightsRunnerLambdaFunction.Arn
+          Id: "QuickSightsRunner"
+
+  PermissionForEventsToInvokeLambda:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !Ref QuickSightsRunnerLambdaFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt ScheduledRule.Arn
+
+###############################################################################
+#################################  O U T P U T S  #############################
+###############################################################################
+
+Outputs:
+
+  FunctionArn:
+    Description: "Lambda Function's ARN"
+    Value: !GetAtt QuickSightsRunnerLambdaFunction.Arn
+
+  FunctionName:
+    Description: Name of the lambda function
+    Value: !Ref QuickSightsRunnerLambdaFunction

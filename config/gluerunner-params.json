@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "Region",
+    "ParameterValue": "eu-west-1"
+  },
+  {
+    "ParameterKey": "ArtifactBucketName",
+    "ParameterValue": "aws-test-artifact-bucket-2021041717"
+  },
+  {
+    "ParameterKey": "LambdaSourceS3Key",
+    "ParameterValue": "src/gluerunner.zip"
+  },
+  {
+    "ParameterKey": "DDBTableName",
+    "ParameterValue": "GlueRunnerActiveJobs"
+  },
+  {
+    "ParameterKey": "GlueRunnerLambdaFunctionName",
+    "ParameterValue": "gluerunner"
+  }
+]

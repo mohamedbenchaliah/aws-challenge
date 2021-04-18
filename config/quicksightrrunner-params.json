@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "Region",
+    "ParameterValue": "eu-west-1"
+  },
+  {
+    "ParameterKey": "ArtifactBucketName",
+    "ParameterValue": "aws-test-artifact-bucket-2021041717"
+  },
+  {
+    "ParameterKey": "LambdaSourceS3Key",
+    "ParameterValue": "src/quicksightrunner.zip"
+  },
+  {
+    "ParameterKey": "QuickSightsRunnerLambdaFunctionName",
+    "ParameterValue": "quicksightrunner"
+  }
+]

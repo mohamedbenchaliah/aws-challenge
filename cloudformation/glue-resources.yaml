@@ -1,0 +1,446 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This template sets up sample AWS Glue resources to be orchestrated by AWS Step Functions.
+
+###############################################################################
+############################## P A R A M E T E R S ############################
+###############################################################################
+
+Parameters:
+
+  OpenaqDatabaseName:
+    Type: String
+    MinLength: "4"
+    Default: "openaq_db"
+    Description: "Name of the AWS Glue database to contain this CloudFormation template's tables."
+
+  IsoCountriesTableName:
+    Type: String
+    MinLength: "4"
+    Default: "countries_tb"
+    Description: "Name of the OpenAQ data table in AWS Glue."
+
+  OpenaqTableName:
+    Type: String
+    MinLength: "4"
+    Default: "openaq_tb"
+    Description: "Name of the OpenAQ data table in AWS Glue."
+
+  OpenaqIncoherentTableName:
+    Type: String
+    MinLength: "4"
+    Default: "openaq_inc_tb"
+    Description: "Name of the Incoherent OpenAQ data table in AWS Glue."
+
+  ETLScriptsPrefix:
+    Type: String
+    MinLength: "1"
+    Description: "Location of the Glue job ETL scripts in S3."
+
+  ETLOutputPrefix:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 output path to which this CloudFormation template's AWS Glue jobs are going to write ETL output."
+
+  DataBucketName:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 bucket in which the source data will be uploaded."
+
+  ArtifactBucketName:
+    Type: String
+    MinLength: "1"
+    Description: "Name of the S3 bucket in which the ETL scripts reside."
+
+###############################################################################
+#################################  R E S O U R C E S  #########################
+###############################################################################
+
+Resources:
+
+  AWSGlueJobRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:ListBucket"
+                  - "s3:DeleteObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${DataBucketName}"
+                  - !Sub "arn:aws:s3:::${DataBucketName}/*"
+                  - !Sub "arn:aws:s3:::${ArtifactBucketName}"
+                  - !Sub "arn:aws:s3:::${ArtifactBucketName}/*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Path: "/"
+
+  OpenaqDatabase:
+    Type: "AWS::Glue::Database"
+    Properties:
+      DatabaseInput:
+        Description: "Open Air Quality database."
+        Name: !Ref OpenaqDatabaseName
+      CatalogId: !Ref AWS::AccountId
+
+  OpenaqTable:
+    Type: "AWS::Glue::Table"
+    DependsOn: OpenaqDatabase
+    Properties:
+      TableInput:
+        Description: "Openaq table."
+        TableType: "EXTERNAL_TABLE"
+        Parameters: {
+                    "CrawlerSchemaDeserializerVersion": "1.0",
+                    "compressionType": "none",
+                    "classification": "csv",
+                    "recordCount": "16831",
+                    "typeOfData": "file",
+                    "CrawlerSchemaSerializerVersion": "1.0",
+                    "columnsOrdered": "true",
+                    "objectCount": "1",
+                    "delimiter": ",",
+                    "skip.header.line.count": "1",
+                    "averageRecordSize": "119",
+                    "sizeKey": "2002910"
+        }
+        StorageDescriptor:
+          StoredAsSubDirectories: False
+          Parameters: {
+                    "CrawlerSchemaDeserializerVersion": "1.0",
+                    "compressionType": "none",
+                    "classification": "csv",
+                    "recordCount": "948",
+                    "typeOfData": "file",
+                    "CrawlerSchemaSerializerVersion": "1.0",
+                    "columnsOrdered": "true",
+                    "objectCount": "1",
+                    "delimiter": ",",
+                    "skip.header.line.count": "1",
+                    "averageRecordSize": "160",
+                    "sizeKey": "151746"
+          }
+          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          Columns:
+            - Type: string
+              Name: location
+            - Type: string
+              Name: city
+            - Type: string
+              Name: country
+            - Type: timestamp
+              Name: utc
+            - Type: timestamp
+              Name: local
+            - Type: string
+              Name: parameter
+            - Type: double
+              Name: value
+            - Type: string
+              Name: unit
+            - Type: double
+              Name: latitude
+            - Type: double
+              Name: longitude
+            - Type: array<string>
+              Name: attribution
+          SerdeInfo:
+            Parameters: {
+                        "field.delim": ","
+            }
+            SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+          Compressed: False
+          Location: !Sub "s3://${DataBucketName}/openaq/"
+        Retention: 0
+        Name: !Ref OpenaqTableName
+      DatabaseName: !Ref OpenaqDatabaseName
+      CatalogId: !Ref AWS::AccountId
+
+  OpenaqIncoherentTable:
+    Type: "AWS::Glue::Table"
+    DependsOn: OpenaqDatabase
+    Properties:
+      TableInput:
+        Description: "Openaq Incoherent Data Table."
+        TableType: "EXTERNAL_TABLE"
+        Parameters: {
+                    "CrawlerSchemaDeserializerVersion": "1.0",
+                    "compressionType": "none",
+                    "classification": "csv",
+                    "recordCount": "16831",
+                    "typeOfData": "file",
+                    "CrawlerSchemaSerializerVersion": "1.0",
+                    "columnsOrdered": "true",
+                    "objectCount": "1",
+                    "delimiter": ",",
+                    "skip.header.line.count": "1",
+                    "averageRecordSize": "119",
+                    "sizeKey": "2002910"
+        }
+        StorageDescriptor:
+          StoredAsSubDirectories: False
+          Parameters: {
+                    "CrawlerSchemaDeserializerVersion": "1.0",
+                    "compressionType": "none",
+                    "classification": "csv",
+                    "recordCount": "948",
+                    "typeOfData": "file",
+                    "CrawlerSchemaSerializerVersion": "1.0",
+                    "columnsOrdered": "true",
+                    "objectCount": "1",
+                    "delimiter": ",",
+                    "skip.header.line.count": "1",
+                    "averageRecordSize": "160",
+                    "sizeKey": "151746"
+          }
+          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          Columns:
+            - Type: string
+              Name: location
+            - Type: string
+              Name: city
+            - Type: string
+              Name: country
+            - Type: timestamp
+              Name: utc
+            - Type: timestamp
+              Name: local
+            - Type: string
+              Name: parameter
+            - Type: double
+              Name: value
+            - Type: string
+              Name: unit
+            - Type: double
+              Name: latitude
+            - Type: double
+              Name: longitude
+            - Type: array<string>
+              Name: attribution
+          SerdeInfo:
+            Parameters: {
+                        "field.delim": ","
+            }
+            SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+          Compressed: False
+          Location: !Sub "s3://${DataBucketName}/openaq_inc/"
+        Retention: 0
+        Name: !Ref OpenaqIncoherentTableName
+      DatabaseName: !Ref OpenaqDatabaseName
+      CatalogId: !Ref AWS::AccountId
+
+  IsoCountriesTable:
+    Type: "AWS::Glue::Table"
+    DependsOn: OpenaqDatabase
+    Properties:
+      TableInput:
+        Description: "Iso Countries table."
+        TableType: "EXTERNAL_TABLE"
+        Parameters: {
+                    "CrawlerSchemaDeserializerVersion": "1.0",
+                    "compressionType": "none",
+                    "classification": "csv",
+                    "recordCount": "948",
+                    "typeOfData": "file",
+                    "CrawlerSchemaSerializerVersion": "1.0",
+                    "columnsOrdered": "true",
+                    "objectCount": "1",
+                    "delimiter": ",",
+                    "skip.header.line.count": "1",
+                    "averageRecordSize": "160",
+                    "sizeKey": "151746"
+        }
+        StorageDescriptor:
+          StoredAsSubDirectories: False
+          Parameters: {
+                    "CrawlerSchemaDeserializerVersion": "1.0",
+                    "compressionType": "none",
+                    "classification": "csv",
+                    "recordCount": "948",
+                    "typeOfData": "file",
+                    "CrawlerSchemaSerializerVersion": "1.0",
+                    "columnsOrdered": "true",
+                    "objectCount": "1",
+                    "delimiter": ",",
+                    "skip.header.line.count": "1",
+                    "averageRecordSize": "160",
+                    "sizeKey": "151746"
+          }
+          InputFormat: "org.apache.hadoop.mapred.TextInputFormat"
+          OutputFormat: "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+          Columns:
+            - Type: string
+              Name: English short name
+            - Type: string
+              Name: Alpha-2 code
+            - Type: string
+              Name: Alpha-3 code
+            - Type: string
+              Name: Numeric code
+            - Type: string
+              Name: ISO 3166-2
+          SerdeInfo:
+            Parameters: {
+                        "field.delim": ","
+            }
+            SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
+          Compressed: False
+          Location: !Sub "s3://${DataBucketName}/iso/"
+        Retention: 0
+        Name: !Ref IsoCountriesTableName
+      DatabaseName: !Ref OpenaqDatabaseName
+      CatalogId: !Ref AWS::AccountId
+
+  CrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ETLParquetCrawlerRole
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: ETLParquetCrawlerPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: "*"
+
+  CrawlerETLParquetData:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: openaq_curated_crawler
+      Role: !GetAtt "CrawlerRole.Arn"
+      Targets:
+        S3Targets:
+#          - Path: !Join ["", ["s3://", !Ref "DataBucketName", "/", "ETLScriptsPrefix", "/openaq_curated"]]
+          - Path: !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/openaq_curated"
+      DatabaseName: !Ref OpenaqDatabase
+#        CatalogTargets:
+#          - DatabaseName: !Ref OpenaqDatabase
+#            Tables:
+#              - openaq_curated
+      SchemaChangePolicy:
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "LOG"
+      Configuration: "{\"Version\":1.0,\"CrawlerOutput\":{\"Partitions\":{\"AddOrUpdateBehavior\":\"InheritFromTable\"},\"Tables\":{\"AddOrUpdateBehavior\":\"MergeNewColumns\"}}}"
+    DependsOn:
+      - CrawlerRole
+      - OpenaqDatabase
+
+  ScheduledJobTrigger:
+    Type: 'AWS::Glue::Trigger'
+    Properties:
+      Type: SCHEDULED
+      StartOnCreation: true
+      Description: DESCRIPTION_SCHEDULED
+      Schedule: cron(5 * * * ? *)
+      Actions:
+        - CrawlerName: "openaq_curated_crawler"
+      Name: OpenaqCuratedCrawlerTrigger
+
+  ProcessOpenaqDataJob:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Role: !Ref AWSGlueJobRole
+      Name: "ProcessOpenaqData"
+      GlueVersion: 2.0
+      Command: {
+        "Name" : "glueetl",
+        "ScriptLocation": !Sub "s3://${ArtifactBucketName}/${ETLScriptsPrefix}/process_openaq_data.py"
+      }
+      DefaultArguments: {
+          "--database_name" : !Ref OpenaqDatabaseName,
+          "--table_name" : !Ref OpenaqTableName,
+          "--s3_output_path": !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/tmp/openaq"
+      }
+      MaxRetries: 0
+      Description: "Process OpenAQ data."
+      AllocatedCapacity: 2
+
+  ProcessOpenaqIncoherentDataJob:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Role: !Ref AWSGlueJobRole
+      Name: "ProcessOpenaqIncoherentData"
+      GlueVersion: 2.0
+      Command: {
+        "Name" : "glueetl",
+        "ScriptLocation": !Sub "s3://${ArtifactBucketName}/${ETLScriptsPrefix}/process_openaq_Incoherent_data.py"
+      }
+      DefaultArguments: {
+          "--database_name" : !Ref OpenaqDatabaseName,
+          "--table_name" : !Ref OpenaqIncoherentTableName,
+          "--s3_output_path": !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/tmp/openaq_inc"
+      }
+      MaxRetries: 0
+      Description: "Process Incoherent OpenAQ data."
+      AllocatedCapacity: 2
+
+  ProcessIsoCountriesDataJob:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Role: !Ref AWSGlueJobRole
+      Name: "ProcessIsoCountriesData"
+      GlueVersion: 2.0
+      Command: {
+        "Name" : "glueetl",
+        "ScriptLocation": !Sub "s3://${ArtifactBucketName}/${ETLScriptsPrefix}/process_iso_countries_data.py"
+      }
+      DefaultArguments: {
+          "--database_name" : !Ref OpenaqDatabaseName,
+          "--table_name" : !Ref IsoCountriesTable,
+          "--s3_output_path": !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/tmp/iso_countries"
+      }
+      MaxRetries: 0
+      Description: "Process Iso Countries data."
+      AllocatedCapacity: 2
+
+  JoinOpenaqIsoCountriesDataJob:
+    Type: "AWS::Glue::Job"
+    Properties:
+      Role: !Ref AWSGlueJobRole
+      Name: "JoinOpenaqIsoCountriesData"
+      GlueVersion: 2.0
+      Command: {
+        "Name" : "glueetl",
+        "ScriptLocation": !Sub "s3://${ArtifactBucketName}/${ETLScriptsPrefix}/join_openaq_and_iso_countries_data.py"
+      }
+      DefaultArguments: {
+        "--database_name": !Ref OpenaqDatabaseName,
+        "--s3_output_path": !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/openaq_curated",
+        "--s3_iso_countries_data_path": !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/tmp/iso_countries",
+        "--s3_openaq_data_path": !Sub "s3://${DataBucketName}/${ETLOutputPrefix}/tmp/openaq"
+      }
+      MaxRetries: 0
+      Description: "Join OpenAQ and Iso Countries data."
+      AllocatedCapacity: 3
+

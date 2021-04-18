@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The CloudFormation template for s3 Artifacts.
+
+###############################################################################
+############################## P A R A M E T E R S ############################
+###############################################################################
+
+Parameters:
+
+  ArtifactBucketName:
+    Type: String
+    Description: Bucket Name
+
+###############################################################################
+#################################  R E S O U R C E S  #########################
+###############################################################################
+
+Resources:
+
+  ArtifactS3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      AccessControl: BucketOwnerFullControl
+      BucketName: !Ref ArtifactBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  S3User:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+        - PolicyName: bucket-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - s3:*
+              Resource:
+                - !Sub arn:aws:s3:::${ArtifactS3Bucket}
+                - !Sub arn:aws:s3:::${ArtifactS3Bucket}/*
+
+  S3UserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref S3User
+
+###############################################################################
+#################################  O U T P U T S  #############################
+###############################################################################
+
+Outputs:
+
+  ArtifactBucketName:
+    Value: !Ref ArtifactS3Bucket
+    Description: Name of the Artifact S3 bucket.
+
+  ArtifactS3BucketSecureURL:
+    Value: !Join ['', ['https://', !GetAtt [ArtifactS3Bucket, DomainName]]]
+    Description: Domain Name of the Artifacts S3 bucket
+
+  AccessKeyID:
+    Value: !Ref S3UserAccessKey
+
+  SecretAccessKey:
+    Value: !GetAtt S3UserAccessKey.SecretAccessKey
+
+  User:
+    Value: !Ref S3User

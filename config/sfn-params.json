@@ -1,0 +1,38 @@
+[
+  {
+    "ParameterKey": "CreateView1",
+    "ParameterValue": "create or replace view query_1 as WITH base_query as ( SELECT city, local_time, year, month, day, max(if(parameter='co', if(unit='µg/m³', value*0.000873, value), 0)) AS co, max(if(parameter='so2', if(unit='µg/m³', value*0.000382, value), 0)) AS so2, max(if(parameter='pm25', value, 0)) AS pm25 FROM ${GlueTableName} GROUP BY 1,2,3,4,5 ORDER BY max(if(parameter='pm25', value, 0)) DESC ), avg_query AS ( SELECT city, year, month, avg(co) AS co_avg, avg(so2) AS so_avg FROM base_query GROUP BY 1,2,3 ) SELECT city, year, month, co_avg, so_avg FROM avg_query GROUP BY 1,2,3,4,5 having co_avg >= approx_percentile(co_avg,0.9) and so_avg >= approx_percentile(so_avg,0.9) order by 4 desc,5 desc "
+  },
+  {
+    "ParameterKey": "CreateView2",
+    "ParameterValue": "create or replace view query_2 as WITH base_query as ( SELECT city, local_time, year, month, day, max(if(parameter='co', if(unit='µg/m³', value*0.000873, value), 0)) AS co, max(if(parameter='so2', if(unit='µg/m³', value*0.000382, value), 0)) AS so2, max(if(parameter='pm25', value, 0)) AS pm25 FROM ${GlueTableName} GROUP BY 1,2,3,4,5 ORDER BY max(if(parameter='pm25', value, 0)) DESC ), top5_cities as ( select city, year, month, day, avg(pm25) as pm25_avg, rank() over (partition by year, month, day order by avg(pm25) desc) as rank from base_query group by 1,2,3,4 order by 5 desc ) select city, year, month, day, pm25_avg from top5_cities where rank <= 5 order by day "
+  },
+  {
+    "ParameterKey": "CreateView3",
+    "ParameterValue": "create or replace view query_3 as with base_query as ( SELECT city, from_iso8601_timestamp(local_time) as date, year, month, day, max(if(parameter='co', if(unit='µg/m³', value*0.000873, value), 0)) AS co, max(if(parameter='so2', if(unit='µg/m³', value*0.000382, value), 0)) AS so2, max(if(parameter='pm25', value, 0)) AS pm25 FROM ${GlueTableName} GROUP BY 1,2,3,4,5 ORDER BY max(if(parameter='pm25', value, 0)) DESC ), high_hourly_avg as ( select city, year, month, day, pm25_avg from ( select city, year, month, day, avg(pm25) as pm25_avg, rank() over (partition by year, month, day, extract(hour from date) order by avg(pm25) desc) as rank from base_query group by 1,2,3,4, extract(hour from date) order by 5 desc ) where rank <= 10 ) select b.city, b.year, b.month, b.day, avg(b.so2) AS mean_so2, avg(b.co) AS mean_co, count(distinct b.co) AS mode_co, count(distinct b.so2) AS mode_so2, approx_percentile(b.so2,0.5) AS median_so2, approx_percentile(b.co,0.5) AS median_co from base_query b inner join high_hourly_avg h on h.city = b.city and h.year=b.year and h.month= b.month and h.day=b.day group by 1,2,3,4 "
+  },
+  {
+    "ParameterKey": "CreateView4",
+    "ParameterValue": "create or replace view query_4 as WITH base_query as ( SELECT english_short_name as country, from_iso8601_timestamp(local_time) as date, year, month, day, max(if(parameter='co', if(unit='µg/m³', value*0.000873, value), 0)) AS co, max(if(parameter='so2', if(unit='µg/m³', value*0.000382, value), 0)) AS so2, max(if(parameter='pm25', value, 0)) AS pm25 FROM ${GlueTableName} GROUP BY 1,2,3,4,5 ORDER BY max(if(parameter='pm25', value, 0)) DESC ), IndexGrid AS ( select 1 as level, 15 as pm25, 4 as co, 0.02 as so2 union select 2 as level, 30 as pm25, 6 as co, 0.06 as so2 union select 3 as level, 55 as pm25, 8 as co, 0.12 as so2 ), IndexStatus AS ( SELECT 1 AS level, 'LOW' AS status UNION SELECT 2 AS level, 'MEDIUM' AS status UNION SELECT 3 AS level, 'HIGH' AS status ) SELECT country, extract(hour from date) as hour, year, month, day, qr.co, qr.so2, qr.pm25, status, MAX(index.level) as index FROM IndexGrid index JOIN base_query qr on 1=1 JOIN IndexStatus qi on index.level = qi.level WHERE index.pm25 < qr.pm25 OR index.co < qr.co OR index.so2 < qr.so2 group by 1,2,3,4,5,6,7,8,9 order by index desc --todo : fix US Diplomatic Post: Pristina join code "
+  },
+  {
+    "ParameterKey": "ArtifactBucketName",
+    "ParameterValue": "aws-test-artifact-bucket-2021041717"
+  },
+  {
+    "ParameterKey": "GlueRunnerActivityName",
+    "ParameterValue": "GlueRunnerActivity"
+  },
+  {
+    "ParameterKey": "DataBucketName",
+    "ParameterValue": "aws-test-data-bucket-2021041717"
+  },
+  {
+    "ParameterKey": "LambdaSourceS3Key",
+    "ParameterValue": "src/s3object.zip"
+  },
+  {
+    "ParameterKey": "Region",
+    "ParameterValue": "eu-west-1"
+  }
+]

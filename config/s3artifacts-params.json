@@ -1,0 +1,6 @@
+[
+  {
+    "ParameterKey": "ArtifactBucketName",
+    "ParameterValue": "aws-test-artifact-bucket-2021041717"
+  }
+]

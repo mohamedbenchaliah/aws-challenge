@@ -1,0 +1,15 @@
+{
+    "CREATE_S3_STACK": true,
+    "DEPLOY_LAMBDA_ARTIFACTS": true,
+    "UPLOAD_GLUE_SCRIPTS": true,
+    "CREATE_SFN_STACK": true,
+    "CREATE_GLUE_RESOURCES_STACK": true,
+    "CREATE_GLUE_RUNNER_STACK": true,
+    "CREATE_ATHENA_RUNNER_STACK": true,
+    "CREATE_CRAWLER_RUNNER_STACK": true,
+    "CREATE_QUICKSIGHT_RUNNER_STACK": false,
+    "ARTIFACT_BUCKET_NAME": "aws-test-artifact-bucket-2021041717",
+    "DATA_BUCKET_NAME": "aws-test-data-bucket-2021041717",
+    "STACK_REGION": "eu-west-1",
+    "LAMBDA_FUNC_ROLE_ARN": ""
+}
