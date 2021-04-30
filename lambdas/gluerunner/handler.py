@@ -25,7 +25,7 @@ _config = {
     "sfn_worker_name": "gluerunner",
     "ddb_table": "GlueRunnerActiveJobs",
     "ddb_query_limit": 50,
-    "sfn_max_executions": 10
+    "glue_job_capacity": 10
 }
 
 
@@ -75,6 +75,9 @@ def start_glue_jobs(config):
             response = glue.start_job_run(
                 JobName=glue_job_name,
                 Arguments=glue_job_args,
+                # Arguments={
+                #     'string': 'string'
+                # },
                 AllocatedCapacity=glue_job_capacity
             )
 

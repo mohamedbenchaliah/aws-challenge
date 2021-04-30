@@ -165,7 +165,7 @@ Resources:
             }
             SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
           Compressed: False
-          Location: !Sub "s3://${DataBucketName}/openaq/"
+          Location: !Sub "s3://${DataBucketName}/ingest/openaq/"
         Retention: 0
         Name: !Ref OpenaqTableName
       DatabaseName: !Ref OpenaqDatabaseName
@@ -239,7 +239,7 @@ Resources:
             }
             SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
           Compressed: False
-          Location: !Sub "s3://${DataBucketName}/openaq_inc/"
+          Location: !Sub "s3://${DataBucketName}/ingest/openaq/"
         Retention: 0
         Name: !Ref OpenaqIncoherentTableName
       DatabaseName: !Ref OpenaqDatabaseName
@@ -301,7 +301,7 @@ Resources:
             }
             SerializationLibrary: "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe"
           Compressed: False
-          Location: !Sub "s3://${DataBucketName}/iso/"
+          Location: !Sub "s3://${DataBucketName}/ingest/iso/"
         Retention: 0
         Name: !Ref IsoCountriesTableName
       DatabaseName: !Ref OpenaqDatabaseName

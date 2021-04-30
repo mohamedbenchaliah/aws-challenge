@@ -288,7 +288,8 @@ This script will output a config file `quicksightrrunner-params.json` :
 9. Upload data to s3 partition from the URL :
 
 ```bash
-wget -qO- https://openaq-data.s3.amazonaws.com/2018-04-06.csv | aws s3 cp - s3://aws-test-data-bucket-2021041717/2018/04/06/openaq.csv
+wget -qO- https://openaq-data.s3.amazonaws.com/2018-04-06.csv | aws s3 cp - s3://aws-test-data-bucket-2021041717/ingest/openaq/2018/04/06/openaq.csv
+aws s3 cp data_samples/iso/iso-countries-codes.csv s3://aws-test-data-bucket-2021041717/ingest/iso/iso-countries-codes.csv
 ```
 
 

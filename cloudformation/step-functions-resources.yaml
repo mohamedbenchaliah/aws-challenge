@@ -35,6 +35,11 @@ Parameters:
     Default: "AthenaRunnerActivity"
     Description: "Name of the AWS Step Functions activity to be polled by AthenaRunner."
 
+  S3ObjectActivityName:
+    Type: String
+    Default: "S3objectActivity"
+    Description: "Name of the AWS Step Functions activity to be polled by s3Object lambda function."
+
   Region:
     Type: String
 
@@ -109,10 +114,10 @@ Resources:
     Properties:
       Name: !Ref AthenaRunnerActivityName
 
-  WaitForOpenaqDataActivity:
+  S3objectActivity:
     Type: "AWS::StepFunctions::Activity"
     Properties:
-      Name: !Sub "${DataBucketName}-openaq-raw-data-created"
+      Name: !Ref S3ObjectActivityName
 
   OpenaqETLOrchestrator:
     Type: "AWS::StepFunctions::StateMachine"
@@ -130,17 +135,23 @@ Resources:
                   "Next": "Start Parallel Glue Jobs"
                 },
 
-                "Start Parallel Glue Jobs": {
+                "Wait For OpenAQ Data branch": {
+                  "Type": "Task",
+                  "Resource": "${WaitForOpenaqDataActivityArn}",
+                  "Next": "Run CSV Crawler"
+                },
+
+                "Run CSV Crawler": {
+                  "Type": "Pass",
+                  "Next": "Start Parallel Glue Jobs"
+                },
+
+            "Start Parallel Glue Jobs": {
                   "Type": "Parallel",
                   "Branches": [
                     {
                       "StartAt": "Wait For OpenAQ Data branch 1",
                       "States": {
-                        "Wait For OpenAQ Data branch 1": {
-                          "Type": "Task",
-                          "Resource": "${WaitForOpenaqDataActivityArn}",
-                          "Next": "Prep for Process OpenAQ Data"
-                        },
                         "Prep for Process OpenAQ Data": {
                           "Type": "Pass",
                           "Result": "{\"GlueJobName\" : \"${ProcessOpenaqDataGlueJobName}\"}",
@@ -157,11 +168,6 @@ Resources:
                     {
                       "StartAt": "Wait For OpenAQ Data branch 2",
                       "States": {
-                        "Wait For OpenAQ Data branch 2": {
-                          "Type": "Task",
-                          "Resource": "${WaitForOpenaqDataActivityArn}",
-                          "Next": "Prep for Process Incoherent OpenAQ Data"
-                        },
                         "Prep for Process Incoherent OpenAQ Data": {
                           "Type": "Pass",
                           "Result": "{\"GlueJobName\" : \"${ProcessOpenaqIncoherentDataGlueJobName}\"}",
@@ -177,11 +183,6 @@ Resources:
                     {
                       "StartAt": "Wait For OpenAQ Data branch 3",
                       "States": {
-                        "Wait For OpenAQ Data branch 3": {
-                          "Type": "Task",
-                          "Resource": "${WaitForOpenaqDataActivityArn}",
-                          "Next": "Prep for Process Iso Countries Data"
-                        },
                         "Prep for Process Iso Countries Data": {
                           "Type": "Pass",
                           "Result": "{\"GlueJobName\" : \"${ProcessIsoCountriesDataGlueJobName}\"}",
@@ -238,7 +239,7 @@ Resources:
                 },
                "Run OpenAQ Curated Crawler": {
                   "Type": "Task",
-                  "Resource": "arn:aws:states:eu-west-1:218175336227:activity:GlueRunnerActivity",
+                  "Resource": "${CrawlerRunnerActivityArn}",
                   "Next": "Wait for Crawler to complete",
                   "TimeoutSeconds": 300,
                   "Catch": [
@@ -261,7 +262,6 @@ Resources:
                   "Result": "This is a fallback from the crawler failure.",
                   "End": true
                 },
-
 
 
                 "Start Parallel Athena Queries": {
@@ -384,7 +384,8 @@ Resources:
             }
         - {
             GlueRunnerActivityArn : !Ref GlueRunnerActivity,
-            WaitForOpenaqDataActivityArn: !Ref WaitForOpenaqDataActivity,
+            CrawlerRunnerActivityArn : !Ref GlueRunnerActivity,
+            WaitForOpenaqDataActivityArn: !Ref S3objectActivity,
             ProcessOpenaqDataGlueJobName: "ProcessOpenaqData",
             ProcessOpenaqIncoherentDataGlueJobName: "ProcessOpenaqIncoherentData",
             ProcessIsoCountriesDataGlueJobName: "ProcessIsoCountriesData",

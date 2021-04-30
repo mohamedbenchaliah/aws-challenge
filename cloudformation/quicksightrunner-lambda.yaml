@@ -125,6 +125,17 @@ Resources:
       Roles:
         - !Ref QuickSightsRunnerLambdaExecutionRole
 
+  QuickSightsRunnerLambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - python3.7
+      Content:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: src/awswrangler-layer-2.6.0-py3.7.zip
+      Description: aws wrangler-layer
+      LayerName: aws-wrangler
+
   QuickSightsRunnerLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -132,9 +143,12 @@ Resources:
       Description: "Starts and monitors AWS QuickSights Ingestion / Datasets on behalf of AWS Step Functions."
       Handler: "handler.lambda_handler"
       Role: !GetAtt QuickSightsRunnerLambdaExecutionRole.Arn
+      Layers:
+        - !Ref QuickSightsRunnerLambdaLayer
+#        - !Sub "arn:aws:lambda:eu-west-2:${AWS::AccountId}:layer:aws-wrangler:1"
       Environment:
         Variables:
-          DATABASE_SCHEMA: !Ref Region
+          REGION: !Ref Region
       Code:
         S3Bucket: !Ref ArtifactBucketName
         S3Key: !Ref LambdaSourceS3Key
@@ -143,6 +157,7 @@ Resources:
       Runtime: python3.7
     DependsOn:
       - QuickSightsRunnerLambdaExecutionRole
+      - QuickSightsRunnerLambdaLayer
 
   ScheduledRule:
     Type: "AWS::Events::Rule"

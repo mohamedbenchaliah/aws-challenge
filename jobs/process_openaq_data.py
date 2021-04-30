@@ -31,6 +31,7 @@ datasource0 = glueContext.create_dynamic_frame\
                               table_name=table_name,
                               transformation_ctx="datasource0",
                               # push_down_predicate="(year == '2019' and month == '08' and day == '02')"
+                              # push_down_predicate="to_date(dt) >= date_sub(current_date, 30)",
                               )
 
 
